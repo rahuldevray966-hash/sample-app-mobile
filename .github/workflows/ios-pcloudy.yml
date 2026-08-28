@@ -13,7 +13,7 @@ permissions:
 jobs:
   ios-appium-pcloudy:
 
-    name: Firebase iOS IPA → pCloudy → iPhone 13
+    name: Firebase IPA -> pCloudy -> iPhone 13
 
     runs-on: ubuntu-latest
 
@@ -23,12 +23,12 @@ jobs:
       # 1. Checkout
       # ==================================================
 
-      - name: Checkout source code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
 
       # ==================================================
-      # 2. Authenticate with Firebase
+      # 2. Firebase Authentication
       # ==================================================
 
       - name: Authenticate with Firebase
@@ -38,7 +38,7 @@ jobs:
 
 
       # ==================================================
-      # 3. Get Firebase access token
+      # 3. Get Google/Firebase access token
       # ==================================================
 
       - name: Get Firebase access token
@@ -51,7 +51,7 @@ jobs:
           ACCESS_TOKEN=$(gcloud auth print-access-token)
 
           if [ -z "$ACCESS_TOKEN" ]; then
-            echo "ERROR: Could not get Firebase access token"
+            echo "ERROR: Firebase access token not generated"
             exit 1
           fi
 
@@ -63,7 +63,7 @@ jobs:
 
 
       # ==================================================
-      # 4. Get latest iOS release from Firebase
+      # 4. Get latest iOS release
       # ==================================================
 
       - name: Get latest Firebase iOS release
@@ -95,7 +95,7 @@ jobs:
             exit 1
           fi
 
-          echo "Firebase iOS release found"
+          echo "Latest Firebase iOS release found"
 
           echo "download_url=$DOWNLOAD_URL" >> "$GITHUB_OUTPUT"
 
@@ -111,7 +111,7 @@ jobs:
         run: |
           set -e
 
-          echo "Downloading latest iOS IPA..."
+          echo "Downloading IPA from Firebase..."
 
           curl -fL \
             --retry 3 \
@@ -150,11 +150,15 @@ jobs:
 
           echo "IPA size: ${IPA_SIZE} bytes"
 
+          echo "Checking IPA archive..."
+
+          unzip -t firebase-ios-app.ipa > /dev/null
+
           echo "IPA verification successful"
 
 
       # ==================================================
-      # 7. Authenticate with pCloudy
+      # 7. Authenticate pCloudy
       # ==================================================
 
       - name: Authenticate with pCloudy
@@ -173,13 +177,11 @@ jobs:
             -u "${PCLOUDY_EMAIL}:${PCLOUDY_ACCESS_KEY}" \
             "https://device.pcloudy.com/api/access")
 
-          echo "$RESPONSE" > pcloudy-auth.json
-
-          TOKEN=$(echo "$RESPONSE" | jq -r '.result.token // empty')
+          TOKEN=$(echo "$RESPONSE" | jq -r '.result.token // .[0].token // empty')
 
           if [ -z "$TOKEN" ]; then
-            echo "ERROR: Could not extract pCloudy token"
-            cat pcloudy-auth.json
+            echo "ERROR: pCloudy authentication failed"
+            echo "$RESPONSE"
             exit 1
           fi
 
@@ -201,7 +203,7 @@ jobs:
         run: |
           set -e
 
-          echo "Uploading iOS IPA to pCloudy..."
+          echo "Uploading IPA to pCloudy..."
 
           HTTP_CODE=$(curl -sS \
             -o pcloudy-upload.json \
@@ -230,13 +232,12 @@ jobs:
 
       - name: Setup Python
         uses: actions/setup-python@v5
-
         with:
           python-version: "3.12"
 
 
       # ==================================================
-      # 10. Install Python dependencies
+      # 10. Install Appium dependencies
       # ==================================================
 
       - name: Install Appium dependencies
@@ -247,11 +248,11 @@ jobs:
 
           pip install -r requirements.txt
 
-          echo "Appium dependencies installed successfully"
+          echo "Python dependencies installed successfully"
 
 
       # ==================================================
-      # 11. Run iOS Appium lifecycle test
+      # 11. Run iOS Appium test
       # ==================================================
 
       - name: Run iOS Appium lifecycle test
@@ -261,10 +262,10 @@ jobs:
           PCLOUDY_ACCESS_KEY: ${{ secrets.PCLOUDY_ACCESS_KEY }}
 
           # IMPORTANT:
-          # Replace this with the EXACT pCloudy iPhone 13
-          # DeviceFullName shown by pCloudy.
+          # Replace this with the EXACT iPhone 13
+          # DeviceFullName from pCloudy.
 
-          PCLOUDY_DEVICE: Apple_iPhone13_iOS_17.0.0
+          PCLOUDY_DEVICE: Apple_iPhone13_iOS_18.0.0
 
           IOS_BUNDLE_ID: org.reactjs.native.example.SwagLabsMobileApp
 
@@ -297,7 +298,6 @@ jobs:
 
       - name: Upload iOS test results
         if: always()
-
         uses: actions/upload-artifact@v4
 
         with:
@@ -306,7 +306,6 @@ jobs:
           path: |
             ios-appium-results.xml
             firebase-release.json
-            pcloudy-auth.json
             pcloudy-upload.json
 
           if-no-files-found: warn
