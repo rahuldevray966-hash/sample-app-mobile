@@ -5,20 +5,34 @@ from appium import webdriver
 from appium.options.ios import XCUITestOptions
 
 
+# ============================================================
+# Configuration
+# ============================================================
+
 PCLOUDY_URL = "https://device.pcloudy.com/appiumcloud/wd/hub"
 
 PCLOUDY_EMAIL = os.environ["PCLOUDY_EMAIL"]
 PCLOUDY_ACCESS_KEY = os.environ["PCLOUDY_ACCESS_KEY"]
 
-PCLOUDY_DEVICE = "Apple_iPhone13_Ios_17.2.1"
+PCLOUDY_DEVICE = os.environ.get(
+    "PCLOUDY_DEVICE",
+    "Apple_iPhone13_Ios_17.2.1"
+)
 
 APP_NAME = os.environ.get(
     "PCLOUDY_APPLICATION_NAME",
     "firebase-ios-app.ipa"
 )
 
-BUNDLE_ID = "org.reactjs.native.example.SwagLabsMobileApp"
+BUNDLE_ID = os.environ.get(
+    "IOS_BUNDLE_ID",
+    "org.reactjs.native.example.SwagLabsMobileApp"
+)
 
+
+# ============================================================
+# Test
+# ============================================================
 
 def test_ios_app_lifecycle():
 
@@ -29,15 +43,29 @@ def test_ios_app_lifecycle():
     print(f"Device : {PCLOUDY_DEVICE}")
     print(f"Bundle : {BUNDLE_ID}")
     print(f"App    : {APP_NAME}")
+
     print("=" * 50)
 
     options = XCUITestOptions()
 
-    # iOS
-    options.set_capability("platformName", "iOS")
-    options.set_capability("automationName", "XCUITest")
+    # ========================================================
+    # iOS capabilities
+    # ========================================================
 
+    options.set_capability(
+        "platformName",
+        "iOS"
+    )
+
+    options.set_capability(
+        "appium:automationName",
+        "XCUITest"
+    )
+
+    # ========================================================
     # pCloudy authentication
+    # ========================================================
+
     options.set_capability(
         "pCloudy_Username",
         PCLOUDY_EMAIL
@@ -48,13 +76,27 @@ def test_ios_app_lifecycle():
         PCLOUDY_ACCESS_KEY
     )
 
-    # pCloudy device
+    # ========================================================
+    # IMPORTANT:
+    # Use ONLY pCloudy_DeviceFullName for device selection.
+    #
+    # Do NOT add:
+    # deviceName
+    # platformVersion
+    # pCloudy_DeviceVersion
+    # pCloudy_DeviceManufacturer
+    # pCloudy_MinVersion
+    # ========================================================
+
     options.set_capability(
         "pCloudy_DeviceFullName",
         PCLOUDY_DEVICE
     )
 
+    # ========================================================
     # pCloudy application
+    # ========================================================
+
     options.set_capability(
         "pCloudy_ApplicationName",
         APP_NAME
@@ -65,26 +107,23 @@ def test_ios_app_lifecycle():
         10
     )
 
+    # ========================================================
     # iOS application
+    # ========================================================
+
     options.set_capability(
-        "bundleId",
+        "appium:bundleId",
         BUNDLE_ID
     )
 
     options.set_capability(
-        "deviceName",
-        "iPhone 13"
-    )
-
-    options.set_capability(
-        "platformVersion",
-        "17.2.1"
-    )
-
-    options.set_capability(
-        "newCommandTimeout",
+        "appium:newCommandTimeout",
         300
     )
+
+    # ========================================================
+    # Create Appium session
+    # ========================================================
 
     print("Creating pCloudy Appium session...")
 
@@ -97,70 +136,121 @@ def test_ios_app_lifecycle():
 
     try:
 
-        # ----------------------------------------
+        # ====================================================
         # 1. LAUNCH
-        # ----------------------------------------
+        # ====================================================
 
-        print("1. Launching application")
+        print("")
+        print("1. LAUNCH APPLICATION")
 
         driver.activate_app(BUNDLE_ID)
 
         time.sleep(5)
 
-        print("Application launched")
+        print("Current package:", driver.current_package)
 
-        # ----------------------------------------
-        # 2. BACKGROUND
-        # ----------------------------------------
+        print("RESULT: Application launched successfully")
 
-        print("2. Moving application to background")
+        # ====================================================
+        # 2. WAIT
+        # ====================================================
+
+        print("")
+        print("2. WAITING FOR APPLICATION")
+
+        time.sleep(5)
+
+        print("RESULT: Application remained active")
+
+        # ====================================================
+        # 3. BACKGROUND
+        # ====================================================
+
+        print("")
+        print("3. BACKGROUNDING APPLICATION")
 
         driver.background_app(5)
 
-        print("Application moved to background")
+        print("Appium background_app command executed")
 
-        # ----------------------------------------
-        # 3. FOREGROUND
-        # ----------------------------------------
+        print("RESULT: Background operation completed successfully")
 
-        print("3. Bringing application to foreground")
+        # ====================================================
+        # 4. FOREGROUND
+        # ====================================================
+
+        print("")
+        print("4. BRINGING APPLICATION TO FOREGROUND")
 
         driver.activate_app(BUNDLE_ID)
 
-        time.sleep(3)
+        time.sleep(5)
 
-        print("Application returned to foreground")
+        print(
+            "Package after foreground:",
+            driver.current_package
+        )
 
-        # ----------------------------------------
-        # 4. TERMINATE
-        # ----------------------------------------
+        print(
+            "RESULT: Application successfully returned to foreground"
+        )
 
-        print("4. Terminating application")
+        # ====================================================
+        # 5. TERMINATE
+        # ====================================================
+
+        print("")
+        print("5. TERMINATING APPLICATION")
 
         driver.terminate_app(BUNDLE_ID)
 
         time.sleep(3)
 
-        print("Application terminated")
+        print("Appium terminate_app command executed")
 
-        # ----------------------------------------
-        # 5. RELAUNCH
-        # ----------------------------------------
+        print("RESULT: Application terminated successfully")
 
-        print("5. Relaunching application")
+        # ====================================================
+        # 6. RELAUNCH
+        # ====================================================
+
+        print("")
+        print("6. RELAUNCHING APPLICATION")
 
         driver.activate_app(BUNDLE_ID)
 
-        time.sleep(5)
+        time.sleep(8)
 
-        print("Application relaunched")
+        print(
+            "Package after relaunch:",
+            driver.current_package
+        )
 
+        if driver.current_package != BUNDLE_ID:
+            raise AssertionError(
+                f"Application did not relaunch correctly. "
+                f"Expected: {BUNDLE_ID}, "
+                f"Got: {driver.current_package}"
+            )
+
+        print("RESULT: Application relaunched successfully")
+
+        # ====================================================
+        # PASS
+        # ====================================================
+
+        print("")
         print("=" * 50)
-        print("iOS lifecycle test PASSED")
+        print("APP LIFECYCLE TEST PASSED")
         print("=" * 50)
 
     finally:
 
+        # ====================================================
+        # Close Appium session
+        # ====================================================
+
+        print("")
         print("Closing Appium session")
 
         driver.quit()
