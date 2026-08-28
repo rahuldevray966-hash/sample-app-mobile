@@ -1,1 +1,312 @@
+name: Task 5 - Firebase iOS IPA to pCloudy Appium
 
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios-appium-pcloudy:
+
+    name: Firebase iOS IPA → pCloudy → iPhone 13
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # ==================================================
+      # 1. Checkout
+      # ==================================================
+
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+
+      # ==================================================
+      # 2. Authenticate with Firebase
+      # ==================================================
+
+      - name: Authenticate with Firebase
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
+
+
+      # ==================================================
+      # 3. Get Firebase access token
+      # ==================================================
+
+      - name: Get Firebase access token
+        id: firebase-token
+        run: |
+          set -e
+
+          echo "Getting Firebase access token..."
+
+          ACCESS_TOKEN=$(gcloud auth print-access-token)
+
+          if [ -z "$ACCESS_TOKEN" ]; then
+            echo "ERROR: Could not get Firebase access token"
+            exit 1
+          fi
+
+          echo "::add-mask::$ACCESS_TOKEN"
+
+          echo "access_token=$ACCESS_TOKEN" >> "$GITHUB_OUTPUT"
+
+          echo "Firebase authentication successful"
+
+
+      # ==================================================
+      # 4. Get latest iOS release from Firebase
+      # ==================================================
+
+      - name: Get latest Firebase iOS release
+        id: firebase-release
+
+        env:
+          FIREBASE_PROJECT_NUMBER: ${{ secrets.FIREBASE_PROJECT_NUMBER }}
+          FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+          ACCESS_TOKEN: ${{ steps.firebase-token.outputs.access_token }}
+
+        run: |
+          set -e
+
+          echo "Getting latest Firebase iOS release..."
+
+          RESPONSE=$(curl -sS \
+            --fail-with-body \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "Accept: application/json" \
+            "https://firebaseappdistribution.googleapis.com/v1/projects/${FIREBASE_PROJECT_NUMBER}/apps/${FIREBASE_APP_ID}/releases?pageSize=1&orderBy=createTime%20desc")
+
+          echo "$RESPONSE" > firebase-release.json
+
+          DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r '.releases[0].binaryDownloadUri')
+
+          if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+            echo "ERROR: Firebase IPA download URL not found"
+            cat firebase-release.json
+            exit 1
+          fi
+
+          echo "Firebase iOS release found"
+
+          echo "download_url=$DOWNLOAD_URL" >> "$GITHUB_OUTPUT"
+
+
+      # ==================================================
+      # 5. Download IPA
+      # ==================================================
+
+      - name: Download latest iOS IPA
+        env:
+          DOWNLOAD_URL: ${{ steps.firebase-release.outputs.download_url }}
+
+        run: |
+          set -e
+
+          echo "Downloading latest iOS IPA..."
+
+          curl -fL \
+            --retry 3 \
+            --retry-delay 2 \
+            -o firebase-ios-app.ipa \
+            "$DOWNLOAD_URL"
+
+          if [ ! -s firebase-ios-app.ipa ]; then
+            echo "ERROR: IPA download failed"
+            exit 1
+          fi
+
+          echo "IPA downloaded successfully"
+
+          ls -lh firebase-ios-app.ipa
+
+
+      # ==================================================
+      # 6. Verify IPA
+      # ==================================================
+
+      - name: Verify IPA
+        run: |
+          set -e
+
+          echo "Verifying IPA..."
+
+          file firebase-ios-app.ipa
+
+          IPA_SIZE=$(stat -c%s firebase-ios-app.ipa)
+
+          if [ "$IPA_SIZE" -le 0 ]; then
+            echo "ERROR: IPA is empty"
+            exit 1
+          fi
+
+          echo "IPA size: ${IPA_SIZE} bytes"
+
+          echo "IPA verification successful"
+
+
+      # ==================================================
+      # 7. Authenticate with pCloudy
+      # ==================================================
+
+      - name: Authenticate with pCloudy
+        id: pcloudy-auth
+
+        env:
+          PCLOUDY_EMAIL: ${{ secrets.PCLOUDY_EMAIL }}
+          PCLOUDY_ACCESS_KEY: ${{ secrets.PCLOUDY_ACCESS_KEY }}
+
+        run: |
+          set -e
+
+          echo "Authenticating with pCloudy..."
+
+          RESPONSE=$(curl -sS \
+            -u "${PCLOUDY_EMAIL}:${PCLOUDY_ACCESS_KEY}" \
+            "https://device.pcloudy.com/api/access")
+
+          echo "$RESPONSE" > pcloudy-auth.json
+
+          TOKEN=$(echo "$RESPONSE" | jq -r '.result.token // empty')
+
+          if [ -z "$TOKEN" ]; then
+            echo "ERROR: Could not extract pCloudy token"
+            cat pcloudy-auth.json
+            exit 1
+          fi
+
+          echo "::add-mask::$TOKEN"
+
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+          echo "pCloudy authentication successful"
+
+
+      # ==================================================
+      # 8. Upload IPA to pCloudy
+      # ==================================================
+
+      - name: Upload IPA to pCloudy
+        env:
+          PCLOUDY_TOKEN: ${{ steps.pcloudy-auth.outputs.token }}
+
+        run: |
+          set -e
+
+          echo "Uploading iOS IPA to pCloudy..."
+
+          HTTP_CODE=$(curl -sS \
+            -o pcloudy-upload.json \
+            -w "%{http_code}" \
+            -X POST \
+            -F "file=@firebase-ios-app.ipa" \
+            -F "source_type=raw" \
+            -F "token=${PCLOUDY_TOKEN}" \
+            -F "filter=all" \
+            "https://device.pcloudy.com/api/upload_file")
+
+          echo "pCloudy upload HTTP status: ${HTTP_CODE}"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "ERROR: pCloudy IPA upload failed"
+            cat pcloudy-upload.json
+            exit 1
+          fi
+
+          echo "IPA uploaded to pCloudy successfully"
+
+
+      # ==================================================
+      # 9. Setup Python
+      # ==================================================
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+
+        with:
+          python-version: "3.12"
+
+
+      # ==================================================
+      # 10. Install Python dependencies
+      # ==================================================
+
+      - name: Install Appium dependencies
+        run: |
+          set -e
+
+          python -m pip install --upgrade pip
+
+          pip install -r requirements.txt
+
+          echo "Appium dependencies installed successfully"
+
+
+      # ==================================================
+      # 11. Run iOS Appium lifecycle test
+      # ==================================================
+
+      - name: Run iOS Appium lifecycle test
+
+        env:
+          PCLOUDY_EMAIL: ${{ secrets.PCLOUDY_EMAIL }}
+          PCLOUDY_ACCESS_KEY: ${{ secrets.PCLOUDY_ACCESS_KEY }}
+
+          # IMPORTANT:
+          # Replace this with the EXACT pCloudy iPhone 13
+          # DeviceFullName shown by pCloudy.
+
+          PCLOUDY_DEVICE: Apple_iPhone13_iOS_17.0.0
+
+          IOS_BUNDLE_ID: org.reactjs.native.example.SwagLabsMobileApp
+
+        run: |
+          set -e
+
+          echo "=========================================="
+          echo "Starting iOS Appium lifecycle test"
+          echo "=========================================="
+
+          echo "Device : $PCLOUDY_DEVICE"
+          echo "Bundle : $IOS_BUNDLE_ID"
+
+          echo "=========================================="
+
+          pytest \
+            automation/test_ios_lifecycle.py \
+            -v \
+            --tb=short \
+            --junitxml=ios-appium-results.xml
+
+          echo "=========================================="
+          echo "iOS Appium test completed successfully"
+          echo "=========================================="
+
+
+      # ==================================================
+      # 12. Upload test results
+      # ==================================================
+
+      - name: Upload iOS test results
+        if: always()
+
+        uses: actions/upload-artifact@v4
+
+        with:
+          name: ios-appium-test-results-iphone13
+
+          path: |
+            ios-appium-results.xml
+            firebase-release.json
+            pcloudy-auth.json
+            pcloudy-upload.json
+
+          if-no-files-found: warn
