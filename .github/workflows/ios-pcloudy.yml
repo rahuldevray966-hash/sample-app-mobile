@@ -1,6 +1,7 @@
-name: iOS Appium - Firebase → pCloudy
+name: iOS Appium - Firebase to pCloudy - iPhone 12 Pro Max
 
 on:
+
   workflow_dispatch:
 
   push:
@@ -10,11 +11,12 @@ on:
 permissions:
   contents: read
 
+
 jobs:
 
   ios-appium:
 
-    name: Firebase IPA → pCloudy → Appium iOS
+    name: Firebase IPA → pCloudy → Appium iPhone 12 Pro Max
 
     runs-on: ubuntu-latest
 
@@ -45,41 +47,49 @@ jobs:
       - name: Install Python dependencies
         shell: bash
         run: |
+
           set -euo pipefail
 
           python -m pip install --upgrade pip
 
           if [ -f requirements.txt ]; then
+
             pip install -r requirements.txt
+
           else
-            pip install Appium-Python-Client selenium pytest pytest-html
+
+            pip install \
+              Appium-Python-Client \
+              selenium \
+              pytest \
+              pytest-html
+
           fi
 
-          echo "=========================================="
-          echo "Installed Python packages"
-          echo "=========================================="
-
+          echo ""
+          echo "Installed packages:"
           pip list
 
 
       # ==================================================
-      # 4. Firebase Authentication
+      # 4. Firebase authentication
       # ==================================================
 
-      - name: Authenticate to Google Cloud
+      - name: Authenticate with Firebase
         uses: google-github-actions/auth@v3
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 
 
       # ==================================================
-      # 5. Get Firebase Access Token
+      # 5. Firebase access token
       # ==================================================
 
       - name: Get Firebase access token
         id: firebase-token
         shell: bash
         run: |
+
           set -euo pipefail
 
           echo "Getting Firebase access token..."
@@ -87,8 +97,11 @@ jobs:
           ACCESS_TOKEN="$(gcloud auth print-access-token)"
 
           if [ -z "$ACCESS_TOKEN" ]; then
+
             echo "ERROR: Firebase access token is empty"
+
             exit 1
+
           fi
 
           echo "::add-mask::$ACCESS_TOKEN"
@@ -99,38 +112,30 @@ jobs:
 
 
       # ==================================================
-      # 6. Get Latest Firebase iOS Release
+      # 6. Get latest Firebase iOS release
       # ==================================================
 
       - name: Get latest Firebase iOS release
         id: firebase-release
         shell: bash
+
         env:
+
           FIREBASE_PROJECT_NUMBER: ${{ secrets.FIREBASE_PROJECT_NUMBER }}
+
           FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+
           ACCESS_TOKEN: ${{ steps.firebase-token.outputs.access_token }}
 
         run: |
+
           set -euo pipefail
 
           echo "=========================================="
           echo "Getting latest Firebase iOS release"
           echo "=========================================="
 
-          PROJECT_NUMBER="$(printf '%s' "$FIREBASE_PROJECT_NUMBER" | tr -d '[:space:]')"
-          APP_ID="$(printf '%s' "$FIREBASE_APP_ID" | tr -d '[:space:]')"
-
-          if [ -z "$PROJECT_NUMBER" ]; then
-            echo "ERROR: FIREBASE_PROJECT_NUMBER is empty"
-            exit 1
-          fi
-
-          if [ -z "$APP_ID" ]; then
-            echo "ERROR: FIREBASE_APP_ID is empty"
-            exit 1
-          fi
-
-          API_URL="https://firebaseappdistribution.googleapis.com/v1/projects/${PROJECT_NUMBER}/apps/${APP_ID}/releases"
+          API_URL="https://firebaseappdistribution.googleapis.com/v1/projects/${FIREBASE_PROJECT_NUMBER}/apps/${FIREBASE_APP_ID}/releases"
 
           RESPONSE="$(
             curl \
@@ -145,22 +150,26 @@ jobs:
               --data-urlencode "orderBy=createTime desc"
           )"
 
-          printf '%s\n' "$RESPONSE" > firebase-release.json
+          echo "$RESPONSE" > firebase-release.json
 
           DOWNLOAD_URL="$(
-            printf '%s' "$RESPONSE" |
+            echo "$RESPONSE" |
             jq -r '.releases[0].binaryDownloadUri // empty'
           )"
 
           RELEASE_NAME="$(
-            printf '%s' "$RESPONSE" |
+            echo "$RESPONSE" |
             jq -r '.releases[0].name // empty'
           )"
 
           if [ -z "$DOWNLOAD_URL" ]; then
+
             echo "ERROR: Firebase iOS release not found"
+
             cat firebase-release.json
+
             exit 1
+
           fi
 
           echo "Latest Firebase release:"
@@ -170,15 +179,18 @@ jobs:
 
 
       # ==================================================
-      # 7. Download Existing IPA
+      # 7. Download existing IPA
       # ==================================================
 
       - name: Download latest Firebase IPA
-        shell: bash
         env:
+
           DOWNLOAD_URL: ${{ steps.firebase-release.outputs.download_url }}
 
+        shell: bash
+
         run: |
+
           set -euo pipefail
 
           echo "=========================================="
@@ -196,8 +208,11 @@ jobs:
             --output firebase-ios-app.ipa
 
           if [ ! -s firebase-ios-app.ipa ]; then
+
             echo "ERROR: IPA download failed"
+
             exit 1
+
           fi
 
           echo "Firebase IPA downloaded successfully"
@@ -211,7 +226,9 @@ jobs:
 
       - name: Verify IPA
         shell: bash
+
         run: |
+
           set -euo pipefail
 
           echo "=========================================="
@@ -223,29 +240,34 @@ jobs:
           IPA_SIZE=$(stat -c%s firebase-ios-app.ipa)
 
           if [ "$IPA_SIZE" -le 0 ]; then
+
             echo "ERROR: IPA is empty"
+
             exit 1
+
           fi
 
           echo "IPA size: ${IPA_SIZE} bytes"
-
-          unzip -l firebase-ios-app.ipa | head -30
 
           echo "IPA verification successful"
 
 
       # ==================================================
-      # 9. pCloudy Authentication
+      # 9. Authenticate pCloudy
       # ==================================================
 
       - name: Authenticate with pCloudy
         id: pcloudy-auth
         shell: bash
+
         env:
+
           PCLOUDY_EMAIL: ${{ secrets.PCLOUDY_EMAIL }}
+
           PCLOUDY_ACCESS_KEY: ${{ secrets.PCLOUDY_ACCESS_KEY }}
 
         run: |
+
           set -euo pipefail
 
           echo "=========================================="
@@ -263,12 +285,19 @@ jobs:
 
           echo "$RESPONSE" > pcloudy-auth.json
 
-          TOKEN="$(echo "$RESPONSE" | jq -r '.result.token // empty')"
+          TOKEN="$(
+            echo "$RESPONSE" |
+            jq -r '.result.token // empty'
+          )"
 
           if [ -z "$TOKEN" ]; then
+
             echo "ERROR: pCloudy authentication failed"
+
             cat pcloudy-auth.json
+
             exit 1
+
           fi
 
           echo "::add-mask::$TOKEN"
@@ -279,26 +308,24 @@ jobs:
 
 
       # ==================================================
-      # 10. Get Available iOS Devices
+      # 10. Check available iOS devices
       # ==================================================
 
       - name: Check available pCloudy iOS devices
         id: pcloudy-devices
         shell: bash
+
         env:
+
           PCLOUDY_TOKEN: ${{ steps.pcloudy-auth.outputs.token }}
 
         run: |
+
           set -euo pipefail
 
           echo "=========================================="
           echo "Checking available pCloudy iOS devices"
           echo "=========================================="
-
-          if [ -z "$PCLOUDY_TOKEN" ]; then
-            echo "ERROR: pCloudy token is empty"
-            exit 1
-          fi
 
           RESPONSE="$(
             curl \
@@ -311,72 +338,89 @@ jobs:
               "https://device.pcloudy.com/api/devices"
           )"
 
-          printf '%s\n' "$RESPONSE" > pcloudy-devices.json
+          echo "$RESPONSE" > pcloudy-devices.json
 
           echo ""
           echo "=========================================="
-          echo "RAW pCloudy iOS device response"
-          echo "=========================================="
-
-          cat pcloudy-devices.json
-
-          echo ""
-          echo "=========================================="
-          echo "Extracted device names"
+          echo "Available iOS devices"
           echo "=========================================="
 
           jq -r '
-            .. |
-            objects |
-            .full_name? //
-            empty
-          ' pcloudy-devices.json 2>/dev/null || true
+            .result.models[] |
+            "\(.display_name) | iOS \(.version) | available=\(.available) | full_name=\(.full_name)"
+          ' pcloudy-devices.json
 
-          echo ""
+
+      # ==================================================
+      # 11. Verify iPhone 12 Pro Max is available
+      # ==================================================
+
+      - name: Verify iPhone 12 Pro Max
+        shell: bash
+
+        run: |
+
+          set -euo pipefail
+
+          DEVICE="Apple_iPhone12ProMax_Ios_16.3.1_22ba7"
+
           echo "=========================================="
-          echo "Searching for iPhone 17"
+          echo "Checking requested device"
           echo "=========================================="
 
-          DEVICE_FOUND="$(
+          echo "Requested:"
+          echo "$DEVICE"
+
+          FOUND="$(
             jq -r '
-              .. |
-              objects |
-              .full_name? //
-              empty
-            ' pcloudy-devices.json 2>/dev/null |
-            grep -i "iPhone17" |
-            head -1 || true
+              .result.models[] |
+              select(
+                .full_name == "'"$DEVICE"'" and
+                .available == true
+              ) |
+              .full_name
+            ' pcloudy-devices.json
           )"
 
-          if [ -z "$DEVICE_FOUND" ]; then
-
-            echo "WARNING: iPhone 17 was not found through API."
+          if [ -z "$FOUND" ]; then
 
             echo ""
-            echo "The API response above is the source of truth."
-            echo "Do NOT start Appium with a guessed DeviceFullName."
+            echo "ERROR: Requested iPhone 12 Pro Max is not available"
+
+            echo ""
+            echo "Available devices:"
+            
+            jq -r '
+              .result.models[] |
+              select(.available == true) |
+              "\(.display_name) | \(.version) | \(.full_name)"
+            ' pcloudy-devices.json
 
             exit 1
 
           fi
 
-          echo "iPhone 17 found:"
-          echo "$DEVICE_FOUND"
+          echo ""
+          echo "SUCCESS:"
+          echo "$FOUND"
 
-          echo "device=$DEVICE_FOUND" >> "$GITHUB_OUTPUT"
+          echo "iPhone 12 Pro Max is available."
 
 
       # ==================================================
-      # 11. Upload IPA to pCloudy
+      # 12. Upload IPA to pCloudy
       # ==================================================
 
       - name: Upload IPA to pCloudy
         id: pcloudy-upload
         shell: bash
+
         env:
+
           PCLOUDY_TOKEN: ${{ steps.pcloudy-auth.outputs.token }}
 
         run: |
+
           set -euo pipefail
 
           echo "=========================================="
@@ -387,44 +431,52 @@ jobs:
             curl \
               --silent \
               --show-error \
-              -o pcloudy-upload.json \
-              -w "%{http_code}" \
+              --output pcloudy-upload.json \
+              --write-out "%{http_code}" \
               --request POST \
-              -F "file=@firebase-ios-app.ipa" \
-              -F "source_type=raw" \
-              -F "token=${PCLOUDY_TOKEN}" \
-              -F "filter=all" \
+              --form "file=@firebase-ios-app.ipa" \
+              --form "source_type=raw" \
+              --form "token=${PCLOUDY_TOKEN}" \
+              --form "filter=all" \
               "https://device.pcloudy.com/api/upload_file"
           )"
 
           echo "pCloudy upload HTTP status: $HTTP_CODE"
 
           if [ "$HTTP_CODE" != "200" ]; then
+
             echo "ERROR: pCloudy IPA upload failed"
+
             cat pcloudy-upload.json
+
             exit 1
+
           fi
 
           echo "IPA uploaded to pCloudy successfully"
 
 
       # ==================================================
-      # 12. Run iOS Appium Test
+      # 13. Run Appium on iPhone 12 Pro Max
       # ==================================================
 
       - name: Run iOS Appium lifecycle test
         shell: bash
+
         env:
+
           PCLOUDY_EMAIL: ${{ secrets.PCLOUDY_EMAIL }}
+
           PCLOUDY_ACCESS_KEY: ${{ secrets.PCLOUDY_ACCESS_KEY }}
 
-          PCLOUDY_DEVICE: ${{ steps.pcloudy-devices.outputs.device }}
+          PCLOUDY_DEVICE: Apple_iPhone12ProMax_Ios_16.3.1_22ba7
 
           PCLOUDY_APPLICATION_NAME: firebase-ios-app.ipa
 
           IOS_BUNDLE_ID: org.reactjs.native.example.SwagLabsMobileApp
 
         run: |
+
           set -euo pipefail
 
           echo "=========================================="
@@ -432,13 +484,12 @@ jobs:
           echo "=========================================="
 
           echo "Device : $PCLOUDY_DEVICE"
+
           echo "Bundle : $IOS_BUNDLE_ID"
+
           echo "App    : $PCLOUDY_APPLICATION_NAME"
 
-          if [ -z "$PCLOUDY_DEVICE" ]; then
-            echo "ERROR: No available pCloudy device selected"
-            exit 1
-          fi
+          echo "=========================================="
 
           pytest \
             automation/test_ios_lifecycle.py \
@@ -447,24 +498,37 @@ jobs:
             --junitxml=ios-appium-results.xml
 
           echo ""
+
           echo "=========================================="
-          echo "iOS Appium test completed successfully"
+
+          echo "iOS Appium lifecycle test completed"
+
           echo "=========================================="
 
 
       # ==================================================
-      # 13. Upload Results
+      # 14. Upload results
       # ==================================================
 
       - name: Upload iOS Appium results
         if: always()
+
         uses: actions/upload-artifact@v4
+
         with:
-          name: ios-appium-test-results
+
+          name: ios-appium-test-results-iphone12promax
+
           path: |
+
             ios-appium-results.xml
+
             firebase-release.json
+
             pcloudy-auth.json
+
             pcloudy-devices.json
+
             pcloudy-upload.json
+
           if-no-files-found: warn
