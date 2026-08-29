@@ -3,7 +3,7 @@ name: Android SauceLabs Sample App
 on:
   push:
     branches:
-      - main
+      - mainn
     paths-ignore:
       - 'ios/**'
       - '**.md'
