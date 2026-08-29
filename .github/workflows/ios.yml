@@ -3,7 +3,7 @@ name: iOS SauceLabs Mobile Sample App
 on:
   push:
     branches:
-      - main
+      - mainn
     paths-ignore:
       - 'android/**'
       - '**.md'
